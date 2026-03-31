@@ -88,13 +88,28 @@ function parseArticleJson(raw: string): { title: string; description: string; co
   const end = text.lastIndexOf("}");
   if (start >= 0 && end > start) text = text.slice(start, end + 1);
   try {
-    const o = JSON.parse(text) as { title?: string; description?: string; content?: string; keywords?: unknown };
-    if (!o.title || !o.description || !o.content) return null;
-    const keywords = Array.isArray(o.keywords) ? o.keywords.map(String) : [];
+    const o = JSON.parse(text) as Record<string, unknown>;
+
+    const nested =
+      (typeof o.article === "object" && o.article !== null && o.article) ||
+      (typeof o.data === "object" && o.data !== null && o.data) ||
+      (typeof o.result === "object" && o.result !== null && o.result) ||
+      o;
+
+    const n = nested as Record<string, unknown>;
+
+    const title = (n.title ?? n.headline ?? n.heading ?? n.subject) as string | undefined;
+    const description = (n.description ?? n.meta_description ?? n.summary ?? n.excerpt) as string | undefined;
+    const content = (n.content ?? n.body ?? n.text ?? n.article_body) as string | undefined;
+    const kwRaw = n.keywords ?? n.tags;
+
+    if (!title || !description || !content) return null;
+    const keywords = Array.isArray(kwRaw) ? kwRaw.map(String) : typeof kwRaw === "string" ? [kwRaw] : [];
+
     return {
-      title: String(o.title),
-      description: String(o.description),
-      content: String(o.content),
+      title: String(title).trim(),
+      description: String(description).trim(),
+      content: String(content).trim(),
       keywords,
     };
   } catch {
@@ -113,11 +128,13 @@ async function generateArticle(
 Write a factual news-style article for an India audience.
 Language: Hindi for title, description, and main content. End with one short English summary paragraph.
 
-Return ONLY a JSON object (no markdown) with exactly these keys:
-- "title" (string)
+Return ONLY a flat JSON object (no nesting, no markdown) with exactly these keys:
+- "title" (string) — may be in Hindi (Devanagari)
 - "description" (string, ~150 characters, SEO meta)
-- "content" (string, use newlines between paragraphs; can use simple bullets with - )
+- "content" (string, use newlines between paragraphs; bullets with - allowed)
 - "keywords" (array of 6-10 short strings)
+
+Do NOT wrap fields inside "article", "data", or "result".
 
 Rules: neutral tone, no invented quotes, if uncertain say "reports suggest".`;
 
@@ -136,10 +153,25 @@ Rules: neutral tone, no invented quotes, if uncertain say "reports suggest".`;
       max_tokens: 4096,
     });
 
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const choice = completion.choices[0];
+    const raw = choice?.message?.content ?? "";
+    const finish = choice?.finish_reason ?? "unknown";
+
+    if (!raw.trim()) {
+      return {
+        data: null,
+        rawSnippet: "",
+        error: `OpenAI returned empty message (finish_reason=${finish}). Check model access / quota.`,
+      };
+    }
+
     const parsed = parseArticleJson(raw);
     if (!parsed) {
-      return { data: null, rawSnippet: raw.slice(0, 400), error: "Could not parse JSON from model output" };
+      return {
+        data: null,
+        rawSnippet: raw.slice(0, 500),
+        error: `Could not parse JSON (finish_reason=${finish}). See snippet.`,
+      };
     }
     return { data: parsed, rawSnippet: "", error: null };
   } catch (e) {
@@ -229,6 +261,8 @@ export async function POST(request: NextRequest) {
     created,
     failedTopics,
     failures,
+    /** First error — read this if you do not scroll `failures` */
+    primaryFailure: failures[0] ?? null,
     processedTopics: topics,
     trendsError,
     openAiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",

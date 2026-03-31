@@ -1,7 +1,14 @@
 import slugify from "slugify";
 
+/**
+ * Hindi/Devanagari titles often become "" with strict slugify — breaks URLs and routing.
+ */
 export function toSlug(value: string) {
-  return slugify(value, { lower: true, strict: true, trim: true });
+  const base = slugify(value, { lower: true, strict: true, trim: true });
+  if (base.length > 0) return base;
+  const fallback = slugify(value, { lower: true, strict: false, trim: true });
+  if (fallback.length > 0) return fallback;
+  return `post-${Date.now()}`;
 }
 
 export function formatDate(value: string) {
