@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { ArticleCoverImage } from "@/components/article-cover-image";
 import { NewsArticle } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -7,13 +7,11 @@ export function ArticleCard({ article }: { article: NewsArticle }) {
   return (
     <article className="overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-zinc-900">
       <Link href={`/news/${article.slug}`}>
-        <Image
+        <ArticleCoverImage
+          articleId={article.id}
           src={article.imageUrl}
           alt={article.title}
-          width={1200}
-          height={700}
           className="h-48 w-full object-cover"
-          loading="lazy"
         />
       </Link>
       <div className="space-y-2 p-4">

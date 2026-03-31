@@ -41,6 +41,24 @@ function hashString(input: string): number {
   return Math.abs(h);
 }
 
+/**
+ * Ordered list of backup image URLs when `src` fails (403, 404, etc.).
+ * Rotated by article id so broken images on different cards do not all swap to the same URL.
+ */
+export function getFallbackCoverChain(articleId: string, primaryUrl: string): string[] {
+  const base = primaryUrl.split("?")[0];
+  const pool = COVER_IMAGES.filter((u) => !u.startsWith(base));
+  const h = hashString(articleId);
+  const start = pool.length ? h % pool.length : 0;
+  const rotated = pool.length ? [...pool.slice(start), ...pool.slice(0, start)] : [];
+
+  const seeds = [h % 997, (h * 31 + 7) % 997, (h * 17 + 3) % 997];
+  const safeId = articleId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12) || "x";
+  const picsum = seeds.map((s) => `https://picsum.photos/seed/tp${safeId}${s}/1200/700`);
+
+  return [...rotated, ...picsum];
+}
+
 /** Deterministic but different image per topic/title/category */
 export function pickArticleCoverImage(topic: string, title: string, category: NewsCategory): string {
   const bias = CATEGORY_BIAS[category] ?? 0;

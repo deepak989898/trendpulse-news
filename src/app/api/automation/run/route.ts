@@ -2,6 +2,7 @@ import googleTrends from "google-trends-api";
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { pickArticleCoverImage } from "@/lib/article-image";
+import { fetchIndiaTrendingFromRss } from "@/lib/india-trending";
 import { getAutomationSettings, saveArticle } from "@/lib/news";
 import { NEWS_CATEGORIES, NewsCategory } from "@/lib/types";
 import { toSlug } from "@/lib/utils";
@@ -36,39 +37,73 @@ function prioritizeTopics(topics: string[]) {
 }
 
 async function getTopicsByWindow(trendWindow: "now 1-H" | "now 4-H" | "now 1-d"): Promise<{ topics: string[]; trendsError: string | null }> {
+  const errors: string[] = [];
+  const collected: string[] = [];
+
+  const rss = await fetchIndiaTrendingFromRss(30);
+  if (rss.topics.length > 0) {
+    collected.push(...rss.topics);
+  } else if (rss.error) {
+    errors.push(`India RSS: ${rss.error}`);
+  }
+
   try {
     const daily = await googleTrends.dailyTrends({ trendDate: new Date(), geo: "IN" });
-    const dailyParsed = JSON.parse(daily) as {
-      default: { trendingSearchesDays: Array<{ trendingSearches: Array<{ title: { query: string } }> }> };
-    };
-    const dailyTopics = dailyParsed.default.trendingSearchesDays[0]?.trendingSearches?.map((i) => i.title.query) ?? [];
-
-    let realTopics: string[] = [];
-    try {
-      const realtime = await googleTrends.realTimeTrends({ geo: "IN", category: "all" });
-      const realParsed = JSON.parse(realtime) as { storySummaries?: { trendingStories?: Array<{ title: string }> } };
-      realTopics = realParsed.storySummaries?.trendingStories?.map((i) => i.title) ?? [];
-    } catch {
-      // realtime optional; daily alone is enough
+    if (!daily.trimStart().startsWith("<")) {
+      const dailyParsed = JSON.parse(daily) as {
+        default: { trendingSearchesDays: Array<{ trendingSearches: Array<{ title: { query: string } }> }> };
+      };
+      const dailyTopics =
+        dailyParsed.default.trendingSearchesDays[0]?.trendingSearches?.map((i) => i.title.query) ?? [];
+      collected.push(...dailyTopics);
+    } else {
+      errors.push("google-trends-api dailyTrends returned HTML");
     }
-
-    const merged = prioritizeTopics([...dailyTopics, ...realTopics]);
-    if (trendWindow === "now 1-H") return { topics: merged.slice(0, 10), trendsError: null };
-    if (trendWindow === "now 4-H") return { topics: merged.slice(0, 15), trendsError: null };
-    return { topics: merged.slice(0, 20), trendsError: null };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Google Trends fetch failed";
+    errors.push(e instanceof Error ? e.message : "dailyTrends failed");
+  }
+
+  try {
+    const realtime = await googleTrends.realTimeTrends({ geo: "IN", category: "all" });
+    if (!realtime.trimStart().startsWith("<")) {
+      const realParsed = JSON.parse(realtime) as { storySummaries?: { trendingStories?: Array<{ title: string }> } };
+      const realTopics = realParsed.storySummaries?.trendingStories?.map((i) => i.title) ?? [];
+      collected.push(...realTopics);
+    }
+  } catch {
+    // optional
+  }
+
+  const rssOrdered = rss.topics;
+  const scoredRest = prioritizeTopics(collected.filter((t) => !rssOrdered.includes(t)));
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const t of [...rssOrdered, ...scoredRest]) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      merged.push(t);
+    }
+  }
+  const limit = trendWindow === "now 1-H" ? 10 : trendWindow === "now 4-H" ? 15 : 20;
+  const topics = merged.slice(0, limit);
+
+  if (topics.length > 0) {
     return {
-      topics: [
-        "IPL latest match updates",
-        "Top tech innovation in India",
-        "Viral social trend in India",
-        "Government policy update",
-        "Startup funding India",
-      ],
-      trendsError: msg,
+      topics,
+      trendsError: errors.length ? errors.join(" | ") : null,
     };
   }
+
+  return {
+    topics: [
+      "IPL latest match updates",
+      "Top tech innovation in India",
+      "Viral social trend in India",
+      "Government policy update",
+      "Startup funding India",
+    ],
+    trendsError: errors.join(" | ") || "No trending topics from RSS or API",
+  };
 }
 
 function isAuthorizedCron(request: NextRequest) {
@@ -124,13 +159,16 @@ async function generateArticle(
   openai: OpenAI,
   topic: string,
 ): Promise<{ data: ArticlePayload | null; rawSnippet: string; error: string | null }> {
-  const userPrompt = `Topic: "${topic}"
+  const userPrompt = `This is a LIVE trending search query in India today (from Google Trends style feeds): "${topic}"
 
-Write a factual news-style article for an India audience.
+Write a factual, timely news-style article for an India audience. The story must feel current and tied to this exact trending topic — not generic evergreen filler.
+
+Headline rule: the JSON "title" MUST include the exact trending phrase above (same words, same order is best). You may add a short subtitle after a colon or em dash if needed.
+
 Language: Hindi for title, description, and main content. End with one short English summary paragraph.
 
 Return ONLY a flat JSON object (no nesting, no markdown) with exactly these keys:
-- "title" (string) — may be in Hindi (Devanagari)
+- "title" (string)
 - "description" (string, ~150 characters, SEO meta)
 - "content" (string, use newlines between paragraphs; bullets with - allowed)
 - "keywords" (array of 6-10 short strings)
