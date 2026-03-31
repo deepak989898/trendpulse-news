@@ -55,6 +55,19 @@ export async function getArticleBySlug(slug: string) {
   return all.find((article) => article.slug === slug);
 }
 
+export async function getArticleById(id: string): Promise<NewsArticle | null> {
+  if (!hasFirebaseAdminEnv) return null;
+  try {
+    const adminDb = getAdminDb();
+    const snap = await adminDb.collection(ARTICLES).doc(id).get();
+    if (!snap.exists) return null;
+    return { id: snap.id, ...snap.data() } as NewsArticle;
+  } catch (error) {
+    console.error("getArticleById error", error);
+    return null;
+  }
+}
+
 export async function saveArticle(input: Omit<NewsArticle, "id">) {
   const adminDb = getAdminDb();
   const doc = await adminDb.collection(ARTICLES).add(input);

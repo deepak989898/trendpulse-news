@@ -1,6 +1,7 @@
 import googleTrends from "google-trends-api";
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
+import { pickArticleCoverImage } from "@/lib/article-image";
 import { getAutomationSettings, saveArticle } from "@/lib/news";
 import { NEWS_CATEGORIES, NewsCategory } from "@/lib/types";
 import { toSlug } from "@/lib/utils";
@@ -233,14 +234,15 @@ export async function POST(request: NextRequest) {
       }
       const now = new Date().toISOString();
       const category = pickCategory(topic);
+      const resolvedCategory = NEWS_CATEGORIES.includes(category) ? category : "Tech";
       const id = await saveArticle({
         title: data.title,
         slug: toSlug(data.title),
         description: data.description,
         content: data.content,
-        category: NEWS_CATEGORIES.includes(category) ? category : "Tech",
+        category: resolvedCategory,
         keywords: data.keywords.length ? data.keywords.slice(0, 10) : ["india", "trending", "news"],
-        imageUrl: "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80",
+        imageUrl: pickArticleCoverImage(topic, data.title, resolvedCategory),
         createdAt: now,
         publishedAt: now,
         isApproved: true,

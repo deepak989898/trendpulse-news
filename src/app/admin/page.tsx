@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAutomationSettings, getDashboardMetrics, getLatestArticles, getManagedCategories } from "@/lib/news";
 import { NEWS_CATEGORIES } from "@/lib/types";
 
@@ -105,7 +106,10 @@ export default async function AdminPage() {
                 <p className="font-semibold">{article.title}</p>
                 <p className="text-xs text-zinc-500">{article.category}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/admin/edit/${article.id}`} className="rounded border border-blue-600 px-2 py-1 text-sm text-blue-600">
+                  Edit
+                </Link>
                 <form action={`/api/articles/${article.id}`} method="post" className="flex gap-2 text-sm">
                   <button name="_action" value={article.isApproved ? "unapprove" : "approve"} className="rounded border px-2 py-1">
                     {article.isApproved ? "Unapprove" : "Approve"}
