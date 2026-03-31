@@ -20,7 +20,11 @@ export function ThemeToggle() {
   };
 
   return (
-    <button onClick={toggle} className="rounded-full border px-3 py-1 text-sm">
+    <button
+      type="button"
+      onClick={toggle}
+      className="rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800"
+    >
       {dark ? "Light" : "Dark"}
     </button>
   );
