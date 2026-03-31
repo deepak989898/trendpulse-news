@@ -6,29 +6,42 @@ const ARTICLES = "articles";
 const SETTINGS = "settings";
 const ANALYTICS = "analytics";
 
+const hasFirebaseAdminEnv = Boolean(
+  process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY,
+);
+
 function toArticleList(snapshot: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) {
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as NewsArticle);
 }
 
+function fallbackArticles() {
+  if (process.env.NODE_ENV === "development") return seedArticles;
+  return [] as NewsArticle[];
+}
+
 export async function getLatestArticles(limit = 20) {
+  if (!hasFirebaseAdminEnv) return fallbackArticles();
   try {
     const adminDb = getAdminDb();
     const snapshot = await adminDb.collection(ARTICLES).orderBy("publishedAt", "desc").limit(limit * 3).get();
     const articles = toArticleList(snapshot).filter((item) => item.isApproved !== false);
     return articles.slice(0, limit);
-  } catch {
-    return seedArticles;
+  } catch (error) {
+    console.error("getLatestArticles error", error);
+    return fallbackArticles();
   }
 }
 
 export async function getTrendingArticles(limit = 8) {
+  if (!hasFirebaseAdminEnv) return fallbackArticles();
   try {
     const adminDb = getAdminDb();
     const snapshot = await adminDb.collection(ARTICLES).orderBy("views", "desc").limit(limit * 3).get();
     const articles = toArticleList(snapshot).filter((item) => item.isApproved !== false);
     return articles.slice(0, limit);
-  } catch {
-    return seedArticles;
+  } catch (error) {
+    console.error("getTrendingArticles error", error);
+    return fallbackArticles();
   }
 }
 
@@ -59,12 +72,14 @@ export async function deleteArticle(id: string) {
 }
 
 export async function getAutomationSettings(): Promise<AutomationSettings> {
+  if (!hasFirebaseAdminEnv) return { frequency: "hourly", trendWindow: "now 1-H" };
   try {
     const adminDb = getAdminDb();
     const snapshot = await adminDb.collection(SETTINGS).doc("automation").get();
     if (!snapshot.exists) return { frequency: "hourly", trendWindow: "now 1-H" };
     return snapshot.data() as AutomationSettings;
-  } catch {
+  } catch (error) {
+    console.error("getAutomationSettings error", error);
     return { frequency: "hourly", trendWindow: "now 1-H" };
   }
 }
@@ -75,13 +90,15 @@ export async function updateAutomationSettings(settings: AutomationSettings) {
 }
 
 export async function getManagedCategories() {
+  if (!hasFirebaseAdminEnv) return [] as string[];
   try {
     const adminDb = getAdminDb();
     const snapshot = await adminDb.collection(SETTINGS).doc("categories").get();
     if (!snapshot.exists) return [] as string[];
     const data = snapshot.data() as { enabled?: string[] };
     return data.enabled ?? [];
-  } catch {
+  } catch (error) {
+    console.error("getManagedCategories error", error);
     return [] as string[];
   }
 }
@@ -95,6 +112,15 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const [latest, trending] = await Promise.all([getLatestArticles(200), getTrendingArticles(5)]);
   let totalVisitors = latest.reduce((sum, item) => sum + (item.views ?? 0), 0);
   let adRevenue = 0;
+  if (!hasFirebaseAdminEnv) {
+    return {
+      totalArticles: latest.length,
+      totalVisitors,
+      trendingPosts: trending,
+      adRevenue,
+    };
+  }
+
   try {
     const adminDb = getAdminDb();
     const analytics = await adminDb.collection(ANALYTICS).doc("summary").get();
@@ -103,8 +129,8 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
       totalVisitors = data.totalVisitors ?? totalVisitors;
       adRevenue = data.adRevenue ?? 0;
     }
-  } catch {
-    // no-op
+  } catch (error) {
+    console.error("getDashboardMetrics error", error);
   }
   return {
     totalArticles: latest.length,

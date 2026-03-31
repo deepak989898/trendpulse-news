@@ -2,8 +2,22 @@
 
 import { FormEvent, useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
 import { useRouter } from "next/navigation";
 import { getFirebaseAuth } from "@/lib/firebase-client";
+
+function getFriendlyError(error: unknown) {
+  if (error instanceof FirebaseError) {
+    if (error.code === "auth/invalid-credential") return "Invalid email/password, or this email is not enabled in Firebase Auth.";
+    if (error.code === "auth/user-not-found") return "User not found in Firebase Auth.";
+    if (error.code === "auth/wrong-password") return "Wrong password.";
+    if (error.code === "auth/invalid-api-key") return "Firebase API key is invalid. Check NEXT_PUBLIC_FIREBASE_API_KEY.";
+    if (error.code === "auth/network-request-failed") return "Network error while contacting Firebase Auth.";
+    return `Firebase error: ${error.code}`;
+  }
+  if (error instanceof Error) return error.message;
+  return "Login failed. Check Firebase Auth config and credentials.";
+}
 
 export function AdminLoginForm() {
   const [email, setEmail] = useState("");
@@ -16,7 +30,9 @@ export function AdminLoginForm() {
     setError("");
     try {
       const firebaseAuth = getFirebaseAuth();
-      if (!firebaseAuth) throw new Error("Missing Firebase client configuration");
+      if (!firebaseAuth) {
+        throw new Error("Missing Firebase client config. Set NEXT_PUBLIC_FIREBASE_* in Vercel.");
+      }
       const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
       const token = await credential.user.getIdToken();
       const res = await fetch("/api/auth/session", {
@@ -24,10 +40,13 @@ export function AdminLoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      if (!res.ok) throw new Error("Session create failed");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ error: "Session create failed" }));
+        throw new Error(payload.error ?? "Session create failed");
+      }
       router.push("/admin");
-    } catch {
-      setError("Invalid credentials.");
+    } catch (err) {
+      setError(getFriendlyError(err));
     }
   }
 

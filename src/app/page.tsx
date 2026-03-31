@@ -16,9 +16,17 @@ export default async function Home() {
     })),
   );
 
+  const isFallback = trending.some((item) => item.id.startsWith("seed-"));
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <section className="space-y-8">
+        {isFallback ? (
+          <div className="rounded-xl border border-amber-400/40 bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+            Showing fallback sample article. Check Firebase Admin env vars and run automation endpoint.
+          </div>
+        ) : null}
+
         <div>
           <h1 className="mb-4 text-3xl font-bold">Trending News</h1>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
