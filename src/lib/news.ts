@@ -6,16 +6,16 @@ const ARTICLES = "articles";
 const SETTINGS = "settings";
 const ANALYTICS = "analytics";
 
+function toArticleList(snapshot: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) {
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as NewsArticle);
+}
+
 export async function getLatestArticles(limit = 20) {
   try {
     const adminDb = getAdminDb();
-    const snapshot = await adminDb
-      .collection(ARTICLES)
-      .where("isApproved", "==", true)
-      .orderBy("publishedAt", "desc")
-      .limit(limit)
-      .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as NewsArticle);
+    const snapshot = await adminDb.collection(ARTICLES).orderBy("publishedAt", "desc").limit(limit * 3).get();
+    const articles = toArticleList(snapshot).filter((item) => item.isApproved !== false);
+    return articles.slice(0, limit);
   } catch {
     return seedArticles;
   }
@@ -24,25 +24,21 @@ export async function getLatestArticles(limit = 20) {
 export async function getTrendingArticles(limit = 8) {
   try {
     const adminDb = getAdminDb();
-    const snapshot = await adminDb
-      .collection(ARTICLES)
-      .where("isApproved", "==", true)
-      .orderBy("views", "desc")
-      .limit(limit)
-      .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as NewsArticle);
+    const snapshot = await adminDb.collection(ARTICLES).orderBy("views", "desc").limit(limit * 3).get();
+    const articles = toArticleList(snapshot).filter((item) => item.isApproved !== false);
+    return articles.slice(0, limit);
   } catch {
     return seedArticles;
   }
 }
 
 export async function getCategoryArticles(category: NewsCategory, limit = 6) {
-  const all = await getLatestArticles(50);
+  const all = await getLatestArticles(80);
   return all.filter((article) => article.category === category).slice(0, limit);
 }
 
 export async function getArticleBySlug(slug: string) {
-  const all = await getLatestArticles(120);
+  const all = await getLatestArticles(250);
   return all.find((article) => article.slug === slug);
 }
 
@@ -66,9 +62,7 @@ export async function getAutomationSettings(): Promise<AutomationSettings> {
   try {
     const adminDb = getAdminDb();
     const snapshot = await adminDb.collection(SETTINGS).doc("automation").get();
-    if (!snapshot.exists) {
-      return { frequency: "hourly", trendWindow: "now 1-H" };
-    }
+    if (!snapshot.exists) return { frequency: "hourly", trendWindow: "now 1-H" };
     return snapshot.data() as AutomationSettings;
   } catch {
     return { frequency: "hourly", trendWindow: "now 1-H" };
@@ -99,7 +93,7 @@ export async function updateManagedCategories(categories: string[]) {
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const [latest, trending] = await Promise.all([getLatestArticles(200), getTrendingArticles(5)]);
-  let totalVisitors = latest.reduce((sum, item) => sum + item.views, 0);
+  let totalVisitors = latest.reduce((sum, item) => sum + (item.views ?? 0), 0);
   let adRevenue = 0;
   try {
     const adminDb = getAdminDb();
