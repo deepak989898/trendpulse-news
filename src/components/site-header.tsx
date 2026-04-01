@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { UiLang, uiText } from "@/lib/i18n";
@@ -16,9 +17,16 @@ export function SiteHeader({ lang }: { lang: UiLang }) {
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:px-6">
         <Link
           href="/"
-          className="shrink-0 text-xl font-bold tracking-tight text-zinc-900 transition-colors hover:text-blue-600 dark:text-zinc-50 dark:hover:text-blue-400"
+          className="shrink-0"
         >
-          TrendPulse News
+          <Image
+            src="/trendpulse-logo.svg"
+            alt="TrendPulse News"
+            width={190}
+            height={56}
+            priority
+            className="h-10 w-auto md:h-11"
+          />
         </Link>
         <nav className="hidden gap-4 md:flex" aria-label="Sections">
           {sections.map((section) => (
